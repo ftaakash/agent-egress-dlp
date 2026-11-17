@@ -114,10 +114,14 @@ class EgressGuard:
         redacting = [f for f in findings if act[f.rule] == "redact"]
         not_text = not text_ok and any(f.where == "body" for f in redacting)
 
-        for f in findings:
-            self._log_finding(f, act[f.rule], host, method)
-
         if blocking or not_text:
+            # Nothing of a blocked request is sent: findings that would only be redacted or logged are
+            # recorded as "dropped" so the report does not count them as redactions.
+            for f in findings:
+                action = act[f.rule] if f in blocking else "dropped"
+                if not blocking and f.where == "body" and act[f.rule] == "redact":
+                    action = "block"
+                self._log_finding(f, action, host, method)
             first = blocking[0] if blocking else next(f for f in redacting if f.where == "body")
             reason = (
                 f"{first.rule} in {first.where}"
@@ -132,6 +136,8 @@ class EgressGuard:
             )
             return
 
+        for f in findings:
+            self._log_finding(f, act[f.rule], host, method)
         if redacting:
             self._apply_redactions(flow, redacting, body)
         outcome = "redacted" if redacting else "forwarded"

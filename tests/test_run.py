@@ -13,10 +13,12 @@ from pathlib import Path
 import pytest
 from conftest import MODEL, TOOLS
 
+import egressguard
 from egressguard.fakes import FakeUpstream, port_is_listening
 from egressguard.runner import child_env
 
-CLIENTS = Path(__file__).parent / "clients"
+AGENT_PY = [sys.executable, "-m", "egressguard.demo_agent"]
+AGENT_MJS = str(Path(egressguard.__file__).with_name("demo_agent.mjs"))
 AWS = "AKIAIOSFODNN7EXAMPLE"
 
 
@@ -51,7 +53,7 @@ def work(tmp_path: Path, eg_home: Path) -> Path:
 
 
 def test_acceptance_python_client(upstream: FakeUpstream, pki: Path, work: Path) -> None:
-    agent = [sys.executable, str(CLIENTS / "agent_py.py")]
+    agent = AGENT_PY
     # (a) tools host is inspected: AWS key blocked
     r = eg_run(upstream, pki, work, [*agent, "block"])
     assert r.returncode == 0, r.stderr
@@ -67,7 +69,7 @@ def test_acceptance_python_client(upstream: FakeUpstream, pki: Path, work: Path)
 
 
 def test_acceptance_child_environment(upstream: FakeUpstream, pki: Path, work: Path) -> None:
-    r = eg_run(upstream, pki, work, [sys.executable, str(CLIENTS / "agent_py.py"), "env"])
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "env"])
     env = json.loads(r.stdout)
     port = proxy_port(r.stderr)
     assert env["HTTPS_PROXY"] == f"http://127.0.0.1:{port}"
@@ -128,9 +130,9 @@ def test_acceptance_curl(upstream: FakeUpstream, pki: Path, work: Path) -> None:
 def test_acceptance_node_fetch(upstream: FakeUpstream, pki: Path, work: Path) -> None:
     node = shutil.which("node")
     assert node
-    r = eg_run(upstream, pki, work, [node, str(CLIENTS / "agent_node.mjs"), "block"])
+    r = eg_run(upstream, pki, work, [node, AGENT_MJS, "block"])
     assert r.stdout.startswith("403 egressguard: blocked"), r.stdout + r.stderr
-    r = eg_run(upstream, pki, work, [node, str(CLIENTS / "agent_node.mjs"), "redact"])
+    r = eg_run(upstream, pki, work, [node, AGENT_MJS, "redact"])
     assert r.stdout.startswith("200"), r.stdout + r.stderr
     (got,) = upstream.requests_to(TOOLS)
     assert "[REDACTED:" in got["headers"]["User-Agent"]

@@ -1,4 +1,4 @@
-"""Command line: `egressguard run`, `egressguard report`."""
+"""Command line: `egressguard run`, `egressguard report`, `egressguard demo`."""
 
 from __future__ import annotations
 
@@ -57,6 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report", help="summarise the event log")
     r.add_argument("--log", type=Path, help="event log (default: ~/.egressguard/egress.jsonl)")
     r.add_argument("--last", action="store_true", help="only the most recent session")
+
+    sub.add_parser("demo", help="run the local demo (fake servers, fake values, no network)")
     return p
 
 
@@ -68,6 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "report":
         sys.stdout.write(report(args.log or default_log_path(), last_session=args.last))
         return 0
+    if args.command == "demo":
+        from .demo import demo
+
+        return demo()
     return 2  # pragma: no cover - argparse rejects unknown commands
 
 

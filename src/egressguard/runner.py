@@ -188,6 +188,7 @@ def run(
             f"egressguard: proxy on 127.0.0.1:{proxy.port}, session {cfg.session_id}, "
             f"policy {policy_path or 'built-in defaults'}, log {log_path}",
             file=out,
+            flush=True,
         )
         child = subprocess.Popen(resolved, env=env, cwd=cwd)
         while True:
@@ -218,4 +219,5 @@ def _session_summary(log_path: Path, session: str, out: TextIO) -> None:
         f"egressguard: session {session}: {len(req)} requests inspected, {blocked} blocked, "
         f"{redacted} redacted, {passthrough} passthrough connections (egressguard report --last)",
         file=out,
+        flush=True,
     )

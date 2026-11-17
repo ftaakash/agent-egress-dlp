@@ -37,6 +37,9 @@ Repository = "https://github.com/ftaakash/agent-egress-dlp"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+egressguard = ["py.typed", "demo_agent.mjs"]
+
 [tool.ruff]
 line-length = 110
 target-version = "py312"
