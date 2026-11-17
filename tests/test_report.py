@@ -75,3 +75,13 @@ def test_report_last_session_only(tmp_path: Path, capsys: pytest.CaptureFixture[
     out = capsys.readouterr().out
     assert "new.test" in out
     assert "old.test" not in out
+
+
+def test_empty_hmac_key_file_is_an_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from egressguard import eventlog
+
+    monkeypatch.setenv("EGRESSGUARD_HOME", str(tmp_path))
+    monkeypatch.setattr(eventlog, "KEY_WAIT", 0.2)
+    (tmp_path / "hmac.key").write_bytes(b"")  # another process created it and has not written yet
+    with pytest.raises(RuntimeError, match="hmac.key"):
+        EventLog(tmp_path / "l.jsonl", "s")

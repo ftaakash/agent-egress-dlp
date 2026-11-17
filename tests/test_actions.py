@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+from pathlib import Path
 
 from conftest import MODEL, OTHER, TOOLS, StartProxy, send
 
@@ -127,10 +128,7 @@ def test_clean_request_untouched(proxy: StartProxy, upstream: FakeUpstream) -> N
     assert got["body"] == "hello"
 
 
-def test_passthrough_is_not_decrypted(proxy: StartProxy, upstream: FakeUpstream, pki: object) -> None:
-    from pathlib import Path
-
-    assert isinstance(pki, Path)
+def test_passthrough_is_not_decrypted(proxy: StartProxy, upstream: FakeUpstream, pki: Path) -> None:
     px = proxy(f"passthrough_hosts: [{MODEL}]\n")
     # The client trusts ONLY the fake upstream CA: a 200 means the proxy did not present its own certificate.
     status, _ = send(
@@ -148,3 +146,21 @@ def test_passthrough_is_not_decrypted(proxy: StartProxy, upstream: FakeUpstream,
     except OSError as e:
         assert "CERTIFICATE_VERIFY_FAILED" in str(e)
     assert any(e["event"] == "passthrough" and e["host"] == MODEL for e in px.events())
+
+
+def test_spoofed_host_header_does_not_unlock_allowlist(proxy: StartProxy, upstream: FakeUpstream) -> None:
+    # The allowlist applies to the host the connection goes to, not to what the Host header claims.
+    secret = "allowlisted-secret-12345"
+    px = proxy(
+        f"allow:\n  - host: {TOOLS}\n    rules: [registered_secret]\n",
+        env={"INTERNAL_API_TOKEN": secret},
+    )
+    status, body = send(
+        f"https://{OTHER}/api",
+        proxy_port=px.proc.port,
+        trust=px.trust,
+        data=f"token={secret}".encode(),
+        headers={"Host": TOOLS},
+    )
+    assert status == 403, body
+    assert upstream.requests_to(OTHER) == []

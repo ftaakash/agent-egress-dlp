@@ -111,7 +111,10 @@ For each request to a non-model host, the addon scans the URL, headers and body:
 `block` answers with a 403 whose text names the rule, so the agent can see why and recover. `redact` replaces
 the value with `[REDACTED:<rule>]`. `log` lets it through and records it. A blocked request never opens a
 connection to the destination (`connection_strategy=lazy`). If inspection itself fails, or a value that should
-be redacted sits in a body that is not text, the request is blocked.
+be redacted sits in a body that is not text, the request is blocked. Hosts for the allowlist and the passthrough
+list are taken from the connection target, never from the `Host` header. Outbound WebSocket messages are checked
+too (block drops the message, redact rewrites it); other non-HTTP data inside an intercepted connection is
+checked, and any block or redact finding closes the connection.
 
 ### Policy file
 
@@ -132,7 +135,9 @@ secrets:
   environment: true        # also register secret-looking environment variables
 ```
 
-An unknown key, rule or action stops `egressguard run` with exit code 2 before anything starts.
+An unknown key, rule or action stops `egressguard run` with exit code 2 before anything starts. A policy file can
+arrive with a repository you cloned, so `egressguard run` prints every way the policy is looser than the defaults
+(weaker actions, allowlist entries, extra passthrough hosts) when it starts.
 
 ### Log and report
 

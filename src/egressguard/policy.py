@@ -88,6 +88,21 @@ class Policy:
     def allowed(self, host: str, rule: str) -> bool:
         return any(rule in e.rules and _host_matches(e.host, host) for e in self.allow)
 
+    def weakened(self) -> list[str]:
+        """Ways this policy is looser than the defaults. Shown at start, because a policy file can come
+        with a cloned repository the user did not write."""
+        rank = {"log": 0, "redact": 1, "block": 2}
+        out = [
+            f"{rule}: {self.actions[rule]} (default {DEFAULT_ACTIONS[rule]})"
+            for rule in RULES
+            if rank[self.actions[rule]] < rank[DEFAULT_ACTIONS[rule]]
+        ]
+        out += [f"allow {e.host}: {', '.join(sorted(e.rules))}" for e in self.allow]
+        out += [f"passthrough {h}" for h in self.passthrough_hosts if h not in DEFAULT_PASSTHROUGH]
+        if not self.scan_environment:
+            out.append("secrets.environment: false")
+        return out
+
     def ignore_hosts_regex(self) -> str:
         """mitmproxy `ignore_hosts` pattern; it is matched against `host:port`."""
         alts = "|".join(_host_pattern(h) for h in self.passthrough_hosts)

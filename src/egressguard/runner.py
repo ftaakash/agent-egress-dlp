@@ -76,13 +76,17 @@ def start_proxy(cfg: SessionConfig, extra_env: dict[str, str] | None = None) -> 
     )
     out.close()
     deadline = time.monotonic() + START_TIMEOUT
-    while time.monotonic() < deadline:
-        if cfg.ready_file.exists():
-            port = int(json.loads(cfg.ready_file.read_text(encoding="utf-8"))["port"])
-            return ProxyProcess(popen, port, ca_dir() / "mitmproxy-ca-cert.pem", log_file)
-        if popen.poll() is not None:
-            break
-        time.sleep(0.05)
+    try:
+        while time.monotonic() < deadline:
+            if cfg.ready_file.exists():
+                port = int(json.loads(cfg.ready_file.read_text(encoding="utf-8"))["port"])
+                return ProxyProcess(popen, port, ca_dir() / "mitmproxy-ca-cert.pem", log_file)
+            if popen.poll() is not None:
+                break
+            time.sleep(0.05)
+    except BaseException:  # Ctrl+C or any error while waiting: do not leave the proxy running
+        kill_tree(popen)
+        raise
     kill_tree(popen)
     tail = log_file.read_text(encoding="utf-8", errors="replace")[-2000:]
     raise ProxyStartError(f"proxy did not start (log {log_file}):\n{tail}")
@@ -141,7 +145,8 @@ def child_env(
     env["EGRESSGUARD_ACTIVE"] = "1"
 
     # git: per-process config entries, appended after any the user already passes this way.
-    n = int(env.get("GIT_CONFIG_COUNT", "0") or "0")
+    raw_count = env.get("GIT_CONFIG_COUNT", "").strip()
+    n = int(raw_count) if raw_count.isdigit() else 0
     git_cfg = [
         ("http.sslCAInfo", str(bundle)),
         ("http.schannelUseSSLCAInfo", "true"),  # Git for Windows with the Schannel backend

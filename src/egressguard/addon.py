@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from mitmproxy import ctx, http
+from mitmproxy import ctx, http, tcp
 from mitmproxy.proxy.server_hooks import ServerConnectionHookData
 
 from .eventlog import EventLog
@@ -37,7 +37,18 @@ class EgressGuard:
         self.scanner = scanner
         self.log = log
         self.resolve = {k.lower(): v for k, v in resolve.items()}
+        self._unresolve = {v: k for k, v in self.resolve.items()}
         self.ready_file = ready_file
+
+    def target_host(self, flow: http.HTTPFlow | tcp.TCPFlow) -> str:
+        """The host the connection really goes to. Never the Host header, which the client controls."""
+        addr = flow.server_conn.address
+        if addr:
+            key = (str(addr[0]), int(addr[1]))
+            return self._unresolve.get(key, key[0]).lower()
+        if isinstance(flow, http.HTTPFlow):
+            return flow.request.host.lower()
+        return ""
 
     # mitmproxy hooks -------------------------------------------------------------------------------------
 
@@ -67,8 +78,57 @@ class EgressGuard:
         try:
             self._inspect(flow)
         except Exception as e:  # fail closed: never forward a request we could not inspect
-            self.log.write("addon_error", host=flow.request.pretty_host, error=type(e).__name__)
+            self.log.write("addon_error", host=flow.request.host, error=type(e).__name__)
             _block(flow, "egressguard: internal error, request blocked (fail closed)\n")
+
+    def websocket_message(self, flow: http.HTTPFlow) -> None:
+        """Outbound WebSocket messages: block drops the message, redact rewrites a text message."""
+        assert flow.websocket is not None
+        msg = flow.websocket.messages[-1]
+        if not msg.from_client:
+            return
+        try:
+            host = self.target_host(flow)
+            if self.policy.is_passthrough(host):
+                return
+            text = msg.text if msg.is_text else msg.content.decode("latin-1")
+            findings = self._active(host, self.scanner.scan(text, "websocket"))
+            act = self.policy.actions
+            for f in findings:
+                self._log_finding(f, act[f.rule], host, "WS")
+            if any(act[f.rule] == "block" for f in findings):
+                msg.drop()
+            elif any(act[f.rule] == "redact" for f in findings):
+                if msg.is_text:
+                    msg.text = redact(text, [f for f in findings if act[f.rule] == "redact"])
+                else:
+                    msg.drop()
+        except Exception as e:  # fail closed
+            self.log.write("addon_error", host=flow.request.host, error=type(e).__name__)
+            msg.drop()
+
+    def tcp_message(self, flow: tcp.TCPFlow) -> None:
+        """Non-HTTP data inside an intercepted connection. A raw stream cannot be rewritten safely, so any
+        block or redact finding kills the connection."""
+        msg = flow.messages[-1]
+        if not msg.from_client:
+            return
+        host = ""
+        try:
+            host = self.target_host(flow)
+            if self.policy.is_passthrough(host):
+                return
+            findings = self._active(host, self.scanner.scan(msg.content.decode("latin-1"), "tcp"))
+            act = self.policy.actions
+            for f in findings:
+                self._log_finding(f, act[f.rule], host, "TCP")
+            if any(act[f.rule] in ("block", "redact") for f in findings):
+                self.log.write("tcp_blocked", host=host)
+                flow.kill()
+        except Exception as e:  # fail closed
+            self.log.write("addon_error", host=host, error=type(e).__name__)
+            if flow.killable:
+                flow.kill()
 
     # inspection ------------------------------------------------------------------------------------------
 
@@ -94,7 +154,7 @@ class EgressGuard:
 
     def _inspect(self, flow: http.HTTPFlow) -> None:
         req = flow.request
-        host = req.pretty_host.lower()
+        host = self.target_host(flow)
         method = req.method
         text_ok = True
         try:
@@ -145,7 +205,7 @@ class EgressGuard:
 
     def _apply_redactions(self, flow: http.HTTPFlow, redacting: list[Finding], body: str) -> None:
         req = flow.request
-        host = req.pretty_host.lower()
+        host = self.target_host(flow)
         url_f = [f for f in redacting if f.where == "url"]
         if url_f:
             req.path = redact(req.path, url_f)

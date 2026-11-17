@@ -22,6 +22,10 @@ def default_log_path() -> Path:
     return egressguard_home() / "egress.jsonl"
 
 
+KEY_LEN = 32
+KEY_WAIT = 2.0
+
+
 def _hmac_key() -> bytes:
     """Per-install random key, so low-entropy values (emails, usernames) cannot be found by guessing."""
     home = egressguard_home()
@@ -30,8 +34,18 @@ def _hmac_key() -> bytes:
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
-        return path.read_bytes()
-    key = secrets.token_bytes(32)
+        # Another process may have created the file and not written the key yet.
+        deadline = time.monotonic() + KEY_WAIT
+        while True:
+            key = path.read_bytes()
+            if len(key) == KEY_LEN:
+                return key
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"{path} is not a {KEY_LEN}-byte key; delete it to make a new one"
+                ) from None
+            time.sleep(0.05)
+    key = secrets.token_bytes(KEY_LEN)
     with os.fdopen(fd, "wb") as f:
         f.write(key)
     return key

@@ -15,6 +15,8 @@ from pathlib import Path
 from .rules import MIN_SECRET_LEN
 
 _SECRET_NAME = re.compile(r"(?:^|_)(?:API_?KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)(?:_|$)")
+# Names that point at a secret rather than hold one (SSH_KEY_PATH, GPG_KEY_ID, TOKEN_FILE).
+_NOT_A_SECRET = re.compile(r"_(?:PATH|FILE|DIR|SOCK|ID|NAME)$")
 _ENV_LINE = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$")
 
 
@@ -53,6 +55,7 @@ def environment_values(env: Mapping[str, str]) -> list[str]:
         for k, v in env.items()
         if not k.upper().startswith("EGRESSGUARD_")
         and _SECRET_NAME.search(k.upper())
+        and not _NOT_A_SECRET.search(k.upper())
         and len(v) >= MIN_SECRET_LEN
     ]
 

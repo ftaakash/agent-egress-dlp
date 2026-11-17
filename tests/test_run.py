@@ -167,3 +167,42 @@ def test_command_not_found(upstream: FakeUpstream, pki: Path, work: Path) -> Non
     r = eg_run(upstream, pki, work, ["definitely-not-a-command-xyz"])
     assert r.returncode == 127
     assert "not found" in r.stderr
+
+
+def test_weakening_policy_is_announced(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "exit:0"], policy="rules:\n  aws_access_key: log\n")
+    assert r.returncode == 0
+    assert "weakens the defaults: aws_access_key: log (default block)" in r.stderr
+
+
+def test_invalid_git_config_count_is_tolerated(tmp_path: Path) -> None:
+    ca = tmp_path / "ca.pem"
+    ca.write_text("-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----\n", encoding="utf-8")
+    env = child_env({"GIT_CONFIG_COUNT": "abc"}, "http://127.0.0.1:1", tmp_path / "s", ca, extra_ca=[])
+    assert env["GIT_CONFIG_COUNT"] == "2"
+    assert env["GIT_CONFIG_KEY_0"] == "http.sslCAInfo"
+
+
+def test_ctrl_c_during_startup_kills_the_proxy(
+    tmp_path: Path, eg_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from egressguard import runner
+    from egressguard.session import SessionConfig
+
+    started: list[subprocess.Popen[bytes]] = []
+    real_popen = subprocess.Popen
+
+    def spy(*a: object, **k: object) -> subprocess.Popen[bytes]:
+        p = real_popen(*a, **k)  # type: ignore[call-overload]
+        started.append(p)
+        return p  # type: ignore[no-any-return]
+
+    def interrupt(_s: float) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner.subprocess, "Popen", spy)
+    monkeypatch.setattr(runner.time, "sleep", interrupt)
+    cfg = SessionConfig.new(cwd=tmp_path, log_path=tmp_path / "l.jsonl", session_dir=tmp_path / "s")
+    with pytest.raises(KeyboardInterrupt):
+        runner.start_proxy(cfg)
+    assert started and started[0].poll() is not None  # the proxy process was stopped

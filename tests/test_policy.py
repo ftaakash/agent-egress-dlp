@@ -94,3 +94,18 @@ def test_find_policy(tmp_path: Path) -> None:
 def test_missing_file_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(PolicyError, match="not found"):
         load_policy(tmp_path / "nope.yml")
+
+
+def test_weakened_lists_loosened_rules_and_allowlist(tmp_path: Path) -> None:
+    pol = load_policy(
+        write(
+            tmp_path,
+            "rules:\n  aws_access_key: log\n  email: block\n"
+            "allow:\n  - host: '*.corp.test'\n    rules: [registered_secret]\n",
+        )
+    )
+    weak = pol.weakened()
+    assert "aws_access_key: log (default block)" in weak
+    assert "allow *.corp.test: registered_secret" in weak
+    assert not any("email" in w for w in weak)  # stricter than the default is not a weakening
+    assert Policy.default().weakened() == []

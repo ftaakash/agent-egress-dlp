@@ -89,10 +89,15 @@ def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     policy_path = args.policy or find_policy(cwd)
     if policy_path is not None:
         try:
-            load_policy(policy_path)  # validate before starting anything
+            policy = load_policy(policy_path)  # validate before starting anything
         except PolicyError as e:
             print(f"egressguard: {e}", file=sys.stderr)
             return 2
+        weak = policy.weakened()
+        if weak:
+            print(
+                f"egressguard: policy {policy_path} weakens the defaults: {'; '.join(weak)}", file=sys.stderr
+            )
     for ca in args.extra_ca:
         if not ca.is_file():
             print(f"egressguard: --extra-ca file not found: {ca}", file=sys.stderr)

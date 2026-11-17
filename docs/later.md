@@ -15,3 +15,4 @@ Not built. Collected after the scope was frozen and from the risk spike.
 - **PowerShell 5.1**: no per-process way was found to make `Invoke-WebRequest` use the proxy and trust its CA;
   document a wrapper or detect and warn.
 - `egressguard run` could warn when the agent's environment already has a `NO_PROXY` it removes.
+- **Log size**: `egressguard run` and `report` read the whole append-only log; add rotation or per-session counters once logs grow (code review, 2026-11-17).

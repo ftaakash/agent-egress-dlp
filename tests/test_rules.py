@@ -131,3 +131,14 @@ def test_environment_values_only_secret_names() -> None:
     assert sorted(environment_values(env)) == sorted(
         ["tok-1234567890", "aws-secret-12345", "ant-key-123456789", "pw-12345678"]
     )
+
+
+def test_environment_values_skip_paths_and_ids() -> None:
+    env = {
+        "SSH_KEY_PATH": "/home/user/.ssh/id_ed25519",
+        "GPG_KEY_ID": "ABCDEF1234567890",
+        "TOKEN_FILE": "/run/secrets/token",
+        "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
+        "STRIPE_KEY": "stripe-value-123456",
+    }
+    assert environment_values(env) == ["stripe-value-123456"]
