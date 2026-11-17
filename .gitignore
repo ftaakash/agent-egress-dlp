@@ -1,0 +1,21 @@
+# throwaway risk spike: never committed
+spike/
+# environments and build output
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# keys, certificates and local state
+*.pem
+*.key
+*.p12
+.mitm/
+.egressguard/
+egress.jsonl
+.env

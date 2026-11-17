@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egressguard"
+version = "0.1.0"
+description = "Local proxy that redacts or blocks secrets, PII and identity data in coding agents' non-model HTTP traffic"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "ftaakash" }]
+keywords = ["dlp", "proxy", "coding-agents", "secrets", "mitmproxy", "security"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Security",
+]
+dependencies = [
+    "mitmproxy>=12.3,<13",
+    "cryptography>=42",
+    "certifi",
+    "ruamel.yaml>=0.18",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+egressguard = "egressguard.cli:main"
+
+[project.urls]
+Repository = "https://github.com/ftaakash/agent-egress-dlp"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["spike"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM"]
+ignore = ["S101", "S603", "S607", "S404"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S108", "S310"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/egressguard"]
+
+[[tool.mypy.overrides]]
+module = ["ruamel.*", "certifi"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
