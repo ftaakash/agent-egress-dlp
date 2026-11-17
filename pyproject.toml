@@ -58,6 +58,11 @@ files = ["src/egressguard"]
 module = ["ruamel.*", "certifi"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# mitmproxy's addon manager, options and Headers.items() are not annotated
+module = ["egressguard.addon", "egressguard.proxy"]
+disallow_untyped_calls = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
