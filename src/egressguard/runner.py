@@ -13,13 +13,18 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import Protocol
 
 from .fakes import port_is_listening
 from .proxy import ca_dir
 from .session import SessionConfig
 
 START_TIMEOUT = 60.0
+
+
+class Writer(Protocol):
+    def write(self, s: str, /) -> int: ...
+    def flush(self) -> None: ...
 
 
 class ProxyStartError(RuntimeError):
@@ -163,7 +168,7 @@ def run(
     extra_ca: list[Path],
     resolve: dict[str, tuple[str, int]],
     cwd: Path,
-    out: TextIO = sys.stderr,
+    out: Writer = sys.stderr,
 ) -> int:
     """Run `cmd` behind the proxy. Returns the command's exit code."""
     resolved = _resolve_command(cmd)
@@ -205,7 +210,7 @@ def run(
         _session_summary(log_path, cfg.session_id, out)
 
 
-def _session_summary(log_path: Path, session: str, out: TextIO) -> None:
+def _session_summary(log_path: Path, session: str, out: Writer) -> None:
     from .eventlog import read_events
 
     ev = [e for e in read_events(log_path) if e.get("session") == session]
