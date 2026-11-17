@@ -1,3 +1,17 @@
 # Later (not in v0.1)
 
-Ideas that came up after the scope was frozen. Not built.
+Not built. Collected after the scope was frozen and from the risk spike.
+
+- **Licence review of the mitmproxy tree** (user decision 2026-11-17: open for v0.2): `mitmproxy-windows` is
+  LGPL-3.0-or-later; `mitmproxy_rs` declares no licence in its wheel metadata. Produce a full transitive licence
+  list; decide whether a stdlib CONNECT + `ssl` proxy is worth the work.
+- **CRL distribution point on the proxy CA**, served by the proxy, so Schannel curl and git need no relaxed
+  revocation checking.
+- **Merge the user's own curl config** into the per-session one instead of replacing it.
+- **Real agents end to end** (Claude Code, Codex): do they honour the variables, any certificate pinning.
+- **MCP over HTTP, HTTP/2, SSE/WebSocket and large or multipart bodies**: tests.
+- **Per-request latency** added by the proxy (only start-up was timed in the spike: 0.77-0.80 s).
+- **macOS** test run; CI on macOS.
+- **PowerShell 5.1**: no per-process way was found to make `Invoke-WebRequest` use the proxy and trust its CA;
+  document a wrapper or detect and warn.
+- `egressguard run` could warn when the agent's environment already has a `NO_PROXY` it removes.

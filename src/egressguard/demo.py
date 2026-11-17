@@ -6,6 +6,7 @@ shows what the servers received and the report. Uses a temporary EGRESSGUARD_HOM
 
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import sys
@@ -20,6 +21,22 @@ TOOLS = "tools.example.test"
 MODEL = "api.model.test"
 AWS = "AKIAIOSFODNN7EXAMPLE"
 DEMO_TOKEN = "demo-token-not-a-real-secret-1234"  # noqa: S105 - fake; registered via the environment
+
+
+class _MaskTmp(io.TextIOBase):
+    """stdout that shows the demo's temporary folder as <tmp> (keeps local paths out of the output)."""
+
+    def __init__(self, tmp: Path) -> None:
+        self.names = sorted({str(tmp), str(tmp.resolve())}, key=len, reverse=True)
+
+    def write(self, s: str) -> int:
+        for n in self.names:
+            s = s.replace(n, "<tmp>")
+        sys.stdout.write(s)
+        return len(s)
+
+    def flush(self) -> None:
+        sys.stdout.flush()
 
 
 def _say(text: str = "") -> None:
@@ -56,7 +73,7 @@ def demo() -> int:
                 extra_ca=[ca],
                 resolve=up.resolve_map(),
                 cwd=work,
-                out=sys.stdout,
+                out=_MaskTmp(tmp),
             )
             reqs = list(up.requests)
 
