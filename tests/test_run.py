@@ -201,8 +201,14 @@ def test_ctrl_c_during_startup_kills_the_proxy(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(runner.subprocess, "Popen", spy)
-    monkeypatch.setattr(runner.time, "sleep", interrupt)
+    monkeypatch.setattr(runner, "_sleep", interrupt)
     cfg = SessionConfig.new(cwd=tmp_path, log_path=tmp_path / "l.jsonl", session_dir=tmp_path / "s")
     with pytest.raises(KeyboardInterrupt):
         runner.start_proxy(cfg)
     assert started and started[0].poll() is not None  # the proxy process was stopped
+    # ...and so was the real interpreter behind a Windows venv launcher: a survivor would write the ready
+    # file within about a second of starting.
+    import time
+
+    time.sleep(4)
+    assert not cfg.ready_file.exists()

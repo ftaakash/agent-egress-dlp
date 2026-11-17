@@ -20,6 +20,7 @@ from .proxy import ca_dir
 from .session import SessionConfig
 
 START_TIMEOUT = 60.0
+_sleep = time.sleep  # module attribute so a test can interrupt only the startup wait
 
 
 class Writer(Protocol):
@@ -83,7 +84,7 @@ def start_proxy(cfg: SessionConfig, extra_env: dict[str, str] | None = None) -> 
                 return ProxyProcess(popen, port, ca_dir() / "mitmproxy-ca-cert.pem", log_file)
             if popen.poll() is not None:
                 break
-            time.sleep(0.05)
+            _sleep(0.05)
     except BaseException:  # Ctrl+C or any error while waiting: do not leave the proxy running
         kill_tree(popen)
         raise
