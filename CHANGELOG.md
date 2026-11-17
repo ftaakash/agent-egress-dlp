@@ -10,6 +10,8 @@ First release.
 - Content rules: private keys, AWS, GitHub, Anthropic, OpenAI and Stripe key formats; registered secrets from
   `.env` and the environment; git email, any email, OS username. Checked in URL, headers and body.
 - Actions `block` (403 naming the rule), `redact`, `log`; per-host allowlist; fails closed on inspection errors.
-- `.egressguard.yml` policy file with validation.
+- Outbound WebSocket messages and non-HTTP data in intercepted connections are checked too; allowlist and
+  passthrough decisions use the connection target, never the `Host` header.
+- `.egressguard.yml` policy file with validation; settings that weaken the defaults are announced at start.
 - JSONL event log with HMAC-hashed values; `egressguard report`.
 - `egressguard demo`: the whole flow on local fake servers with fake values.
