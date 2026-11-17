@@ -113,7 +113,8 @@ class _Handler(BaseHTTPRequestHandler):
             "server": self.server.name,
             "method": self.command,
             "path": self.path,
-            "headers": dict(self.headers.items()),
+            # Canonical names: a client may reach the proxy over HTTP/2, whose header names are lowercase.
+            "headers": {"-".join(w.capitalize() for w in k.split("-")): v for k, v in self.headers.items()},
             "body": body.decode("utf-8", "replace"),
         }
         self.server.owner.record(rec)
