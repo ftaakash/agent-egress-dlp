@@ -1,5 +1,9 @@
 # egressguard
 
+[![ci](https://github.com/ftaakash/agent-egress-dlp/actions/workflows/ci.yml/badge.svg)](https://github.com/ftaakash/agent-egress-dlp/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/ftaakash/agent-egress-dlp)](https://github.com/ftaakash/agent-egress-dlp/releases)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 A local proxy for developers who run coding agents (Claude Code, Codex and the like): it redacts or blocks
 secrets, PII and your own identity in the agent's **non-model** HTTP traffic (web fetches, `curl`, MCP over HTTP)
 before it leaves your machine, and passes model-API traffic through without decrypting it.
@@ -7,6 +11,9 @@ before it leaves your machine, and passes model-API traffic through without decr
 ```
 egressguard run -- claude
 ```
+
+**Status:** v0.1.0, an early release. It is tested against local fake servers on Windows and Linux, not yet end
+to end with a real agent. If you try it in front of one, please [tell me what happened](#feedback-wanted).
 
 ## The problem
 
@@ -158,9 +165,12 @@ show as `dropped`), and passthrough connections.
   check to best effort (the proxy CA has no revocation endpoint).
 - Regex and exact-match detection only: encoded, split or unregistered secrets that do not look like a known
   format are missed.
-- Tested on Windows 11 with Python 3.14, Schannel curl 8.18 and 8.22, Node 24, Git for Windows 2.53 (Schannel),
-  against local fake servers. Not yet tested: real agents end to end, HTTP/2, streaming and WebSocket, MCP
-  servers, macOS. CI is configured for Ubuntu and Windows.
+- A `.egressguard.yml` that comes with a cloned repository is loaded, and can loosen the defaults. egressguard
+  prints every loosening at start, but does not stop it yet (see the roadmap).
+- Tested against local fake servers only: 70 tests in CI on Ubuntu and Windows with Python 3.12 and 3.14, and
+  locally on Windows 11 with Python 3.14, Schannel curl 8.18 and 8.22, Node 24 and Git for Windows 2.53
+  (Schannel). Not yet tested: real agents end to end, MCP servers, HTTP/2, streaming, real WebSocket traffic
+  (the WebSocket and raw-TCP checks have unit tests only), macOS.
 
 ## Dependencies and licences
 
@@ -181,8 +191,22 @@ metadata declares no licence. These were accepted for v0.1; the licence review i
 
 ## Roadmap
 
-See [docs/later.md](docs/later.md): licence review of the mitmproxy dependency tree, a CRL endpoint for the
-proxy CA, merging the user's own curl config, tests against real agents and MCP servers, macOS.
+See [docs/later.md](docs/later.md). Next up:
+
+- tests in front of real agents (Claude Code, Codex) and real MCP servers over HTTP;
+- a policy file inside a repository may only tighten the defaults; loosening needs your own config outside the
+  repository;
+- licence review of the mitmproxy dependency tree;
+- a CRL endpoint for the proxy CA, and merging your own curl config instead of replacing it;
+- macOS.
+
+## Feedback wanted
+
+The most useful report right now: you ran `egressguard run -- <your agent>` and it caught something, missed
+something, or broke something. Please [open an issue](https://github.com/ftaakash/agent-egress-dlp/issues/new)
+with the agent and its version, your OS, what you expected, and the output of `egressguard report --last`. The
+report holds no matched values, only rule names, counts, host names and the log file's path; remove the path and
+any host names you would rather not share.
 
 ## Development
 
