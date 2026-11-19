@@ -16,4 +16,3 @@ Not built. Collected after the scope was frozen and from the risk spike.
   document a wrapper or detect and warn.
 - `egressguard run` could warn when the agent's environment already has a `NO_PROXY` it removes.
 - **Log size**: `egressguard run` and `report` read the whole append-only log; add rotation or per-session counters once logs grow (code review, 2026-11-17).
-- **A repository policy may only tighten** (from comparing with Ficta, 2026-11-19): a `.egressguard.yml` inside the project should not be able to loosen actions, add allowlist entries or passthrough hosts. Take loosening only from a config in `~/.egressguard/`, as Ficta does for its exclusions. v0.1 only announces it.

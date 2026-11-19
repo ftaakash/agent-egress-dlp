@@ -109,3 +109,95 @@ def test_weakened_lists_loosened_rules_and_allowlist(tmp_path: Path) -> None:
     assert "allow *.corp.test: registered_secret" in weak
     assert not any("email" in w for w in weak)  # stricter than the default is not a weakening
     assert Policy.default().weakened() == []
+
+
+def test_merge_repo_policy_only_tightens(tmp_path: Path) -> None:
+    from egressguard.policy import merge_repo_policy, parse_policy
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    base = parse_policy(
+        {
+            "rules": {"email": "log"},
+            "passthrough_hosts": ["api.anthropic.com", "api.openai.com"],
+            "secrets": {"environment": True},
+        }
+    )
+    repo = parse_policy(
+        {
+            "rules": {"email": "block", "aws_access_key": "log", "os_username": "redact"},
+            "allow": [{"host": "evil.test", "rules": ["registered_secret"]}],
+            "passthrough_hosts": ["api.anthropic.com", "evil.test"],
+            "secrets": {"env_files": [".env.local", "../../outside.env"], "environment": False},
+        }
+    )
+    merged, ignored = merge_repo_policy(base, repo, project)
+    assert merged.actions["email"] == "block"  # stricter than base: applied
+    assert merged.actions["aws_access_key"] == "block"  # looser: ignored
+    assert merged.actions["os_username"] == "redact"  # same as base
+    assert merged.allow == ()
+    assert merged.passthrough_hosts == ("api.anthropic.com",)  # removal applied, addition ignored
+    assert merged.scan_environment is True
+    assert str((project / ".env.local").resolve()) in merged.env_files
+    assert not any("outside.env" in f for f in merged.env_files)
+    assert ".env" in merged.env_files  # base files kept
+    assert "aws_access_key: log" in " ".join(ignored)
+    assert any(i.startswith("allow evil.test") for i in ignored)
+    assert "passthrough evil.test" in ignored
+    assert any("outside.env" in i for i in ignored)
+    assert "secrets.environment: false" in ignored
+
+
+def test_effective_policy_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from egressguard.policy import effective_policy
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("EGRESSGUARD_HOME", str(home))
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    eff = effective_policy(project, explicit=None)
+    assert eff.policy == Policy.default()
+    assert eff.sources == ["built-in defaults"]
+
+    (home / "config.yml").write_text("rules:\n  email: log\n", encoding="utf-8")
+    (project / ".egressguard.yml").write_text("rules:\n  os_username: block\n", encoding="utf-8")
+    eff = effective_policy(project, explicit=None)
+    assert eff.policy.actions["email"] == "log"
+    assert eff.policy.actions["os_username"] == "block"
+    assert len(eff.sources) == 2
+
+    flag = tmp_path / "explicit.yml"
+    flag.write_text("rules:\n  stripe_key: log\n", encoding="utf-8")
+    eff = effective_policy(project, explicit=flag)
+    assert eff.policy.actions["stripe_key"] == "log"
+    assert eff.policy.actions["os_username"] == "redact"  # repo file not used with --policy
+    assert eff.skipped_repo_file is not None
+
+
+def test_policy_round_trips_through_data(tmp_path: Path) -> None:
+    from egressguard.policy import parse_policy
+
+    pol = parse_policy(
+        {
+            "rules": {"email": "block"},
+            "allow": [{"host": "*.corp.test", "rules": ["git_email", "email"]}],
+            "passthrough_hosts": ["api.model.test"],
+            "secrets": {"env_files": [str(tmp_path / ".env")], "environment": False},
+        }
+    )
+    assert parse_policy(pol.to_data()) == pol
+
+
+def test_repo_policy_merges_only_what_it_sets(tmp_path: Path) -> None:
+    # A repo file that sets one rule must not reset the trusted policy's other choices to the defaults.
+    from egressguard.policy import merge_repo_policy, parse_policy
+
+    base = parse_policy({"rules": {"email": "log"}, "passthrough_hosts": ["api.model.test", "llm.corp.test"]})
+    repo = parse_policy({"rules": {"os_username": "block"}})
+    merged, ignored = merge_repo_policy(base, repo, tmp_path)
+    assert merged.actions["email"] == "log"
+    assert merged.actions["os_username"] == "block"
+    assert merged.passthrough_hosts == ("api.model.test", "llm.corp.test")
+    assert ignored == []

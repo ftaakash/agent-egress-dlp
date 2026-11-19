@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import __version__
 from .eventlog import default_log_path
-from .policy import PolicyError, find_policy, load_policy
+from .policy import PolicyError, effective_policy
 from .report import report
 
 
@@ -86,18 +86,22 @@ def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if not cmd:
         parser.error("run: give the command after --, e.g. egressguard run -- claude")
     cwd = Path.cwd()
-    policy_path = args.policy or find_policy(cwd)
-    if policy_path is not None:
-        try:
-            policy = load_policy(policy_path)  # validate before starting anything
-        except PolicyError as e:
-            print(f"egressguard: {e}", file=sys.stderr)
-            return 2
-        weak = policy.weakened()
-        if weak:
-            print(
-                f"egressguard: policy {policy_path} weakens the defaults: {'; '.join(weak)}", file=sys.stderr
-            )
+    try:
+        eff = effective_policy(cwd, args.policy)  # validates every file before starting anything
+    except PolicyError as e:
+        print(f"egressguard: {e}", file=sys.stderr)
+        return 2
+    if eff.skipped_repo_file is not None:
+        print(f"egressguard: {eff.skipped_repo_file} not used because --policy was given", file=sys.stderr)
+    if eff.ignored:
+        print(
+            f"egressguard: ignored from {cwd / '.egressguard.yml'} (a repository policy may only tighten): "
+            f"{'; '.join(eff.ignored)}",
+            file=sys.stderr,
+        )
+    weak = eff.policy.weakened()
+    if weak:
+        print(f"egressguard: your policy weakens the defaults: {'; '.join(weak)}", file=sys.stderr)
     for ca in args.extra_ca:
         if not ca.is_file():
             print(f"egressguard: --extra-ca file not found: {ca}", file=sys.stderr)
@@ -105,7 +109,8 @@ def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     try:
         return run(
             cmd,
-            policy_path=policy_path.resolve() if policy_path else None,
+            policy=eff.policy,
+            policy_label=" + ".join(eff.sources),
             log_path=(args.log or default_log_path()).resolve(),
             extra_ca=[p.resolve() for p in args.extra_ca],
             resolve=dict(args.resolve),

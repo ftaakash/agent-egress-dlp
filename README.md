@@ -125,7 +125,17 @@ checked, and any block or redact finding closes the connection.
 
 ### Policy file
 
-Optional `.egressguard.yml` in the directory you run from (or `--policy FILE`):
+Policies use one format, from three places:
+
+| Where | Trusted? | What it can do |
+|---|---|---|
+| `--policy FILE` | yes | anything; used alone, a `.egressguard.yml` in the project is then not read |
+| `~/.egressguard/config.yml` (your own config) | yes | anything |
+| `.egressguard.yml` in the directory you run from | no: it can arrive with a cloned repository | only tighten: stricter actions, removing passthrough hosts, extra `.env` files inside the project |
+
+Without the first two, the built-in defaults are the trusted base. A repository's file cannot set a rule to a
+weaker action, add allowlist entries or passthrough hosts, read `.env` files outside the project, or turn off
+`secrets.environment`; each ignored setting is named when `egressguard run` starts. The format:
 
 ```yaml
 rules:                     # change any rule's action: block, redact or log
@@ -142,9 +152,8 @@ secrets:
   environment: true        # also register secret-looking environment variables
 ```
 
-An unknown key, rule or action stops `egressguard run` with exit code 2 before anything starts. A policy file can
-arrive with a repository you cloned, so `egressguard run` prints every way the policy is looser than the defaults
-(weaker actions, allowlist entries, extra passthrough hosts) when it starts.
+An unknown key, rule or action in any of the files stops `egressguard run` with exit code 2 before anything
+starts. When your trusted policy is looser than the defaults, `egressguard run` says how at start.
 
 ### Log and report
 
@@ -165,8 +174,6 @@ show as `dropped`), and passthrough connections.
   check to best effort (the proxy CA has no revocation endpoint).
 - Regex and exact-match detection only: encoded, split or unregistered secrets that do not look like a known
   format are missed.
-- A `.egressguard.yml` that comes with a cloned repository is loaded, and can loosen the defaults. egressguard
-  prints every loosening at start, but does not stop it yet (see the roadmap).
 - Tested against local fake servers only: 70 tests in CI on Ubuntu and Windows with Python 3.12 and 3.14, and
   locally on Windows 11 with Python 3.14, Schannel curl 8.18 and 8.22, Node 24 and Git for Windows 2.53
   (Schannel). Not yet tested: real agents end to end, MCP servers, HTTP/2, streaming, real WebSocket traffic
@@ -194,8 +201,6 @@ metadata declares no licence. These were accepted for v0.1; the licence review i
 See [docs/later.md](docs/later.md). Next up:
 
 - tests in front of real agents (Claude Code, Codex) and real MCP servers over HTTP;
-- a policy file inside a repository may only tighten the defaults; loosening needs your own config outside the
-  repository;
 - licence review of the mitmproxy dependency tree;
 - a CRL endpoint for the proxy CA, and merging your own curl config instead of replacing it;
 - macOS.

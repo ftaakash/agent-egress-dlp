@@ -77,6 +77,9 @@ class Policy:
     env_files: tuple[str, ...] = (".env",)
     scan_environment: bool = True
     source: str | None = field(default=None, compare=False)
+    # Keys the file actually set ("rules.email", "passthrough_hosts", "secrets.environment"), as opposed
+    # to defaults filled in. A repository policy is merged on these only.
+    explicit: frozenset[str] = field(default=frozenset(), compare=False)
 
     @classmethod
     def default(cls) -> Policy:
@@ -87,6 +90,15 @@ class Policy:
 
     def allowed(self, host: str, rule: str) -> bool:
         return any(rule in e.rules and _host_matches(e.host, host) for e in self.allow)
+
+    def to_data(self) -> dict[str, Any]:
+        """A mapping `parse_policy` accepts, so a merged policy can be handed to the proxy process."""
+        return {
+            "rules": dict(self.actions),
+            "passthrough_hosts": list(self.passthrough_hosts),
+            "allow": [{"host": e.host, "rules": sorted(e.rules)} for e in self.allow],
+            "secrets": {"env_files": list(self.env_files), "environment": self.scan_environment},
+        }
 
     def weakened(self) -> list[str]:
         """Ways this policy is looser than the defaults. Shown at start, because a policy file can come
@@ -174,7 +186,10 @@ def parse_policy(data: Any, source: str | None = None) -> Policy:
             raise PolicyError("secrets.environment: expected true or false")
         scan_env = secrets["environment"]
 
-    return Policy(actions, passthrough, tuple(allow), env_files, scan_env, source)
+    explicit = {f"rules.{r}" for r in rules}
+    explicit |= {k for k in ("passthrough_hosts",) if k in data}
+    explicit |= {f"secrets.{k}" for k in secrets}
+    return Policy(actions, passthrough, tuple(allow), env_files, scan_env, source, frozenset(explicit))
 
 
 def load_policy(path: Path) -> Policy:
@@ -196,3 +211,87 @@ def load_policy(path: Path) -> Policy:
 def find_policy(directory: Path) -> Path | None:
     p = directory / POLICY_FILENAME
     return p if p.is_file() else None
+
+
+USER_CONFIG_FILENAME = "config.yml"
+_RANK = {"log": 0, "redact": 1, "block": 2}
+
+
+def user_config_path() -> Path:
+    from .eventlog import egressguard_home
+
+    return egressguard_home() / USER_CONFIG_FILENAME
+
+
+def merge_repo_policy(base: Policy, repo: Policy, project_dir: Path) -> tuple[Policy, list[str]]:
+    """Apply a repository's policy on top of a trusted one, keeping only what makes it stricter.
+
+    A policy file can arrive with a cloned repository, so it must not be able to loosen protection.
+    Returns the merged policy and a description of every setting that was ignored.
+    """
+    ignored: list[str] = []
+    actions = dict(base.actions)
+    for rule, action in repo.actions.items():
+        if f"rules.{rule}" not in repo.explicit:
+            continue
+        if _RANK[action] > _RANK[actions[rule]]:
+            actions[rule] = action
+        elif _RANK[action] < _RANK[actions[rule]]:
+            ignored.append(f"{rule}: {action} (keeps {actions[rule]})")
+
+    ignored += [f"allow {e.host}: {', '.join(sorted(e.rules))}" for e in repo.allow]
+
+    # Passthrough hosts are not inspected: the repository may remove hosts, never add them.
+    passthrough = base.passthrough_hosts
+    if "passthrough_hosts" in repo.explicit:
+        passthrough = tuple(h for h in base.passthrough_hosts if h in repo.passthrough_hosts)
+        ignored += [f"passthrough {h}" for h in repo.passthrough_hosts if h not in base.passthrough_hosts]
+
+    # Extra .env files only add registered secrets, but only files inside the project are read.
+    env_files = list(base.env_files)
+    root = project_dir.resolve()
+    for name in repo.env_files:
+        p = Path(name)
+        full = (p if p.is_absolute() else root / p).resolve()
+        if not full.is_relative_to(root):
+            ignored.append(f"secrets.env_files {name} (outside the project)")
+        elif name not in env_files and str(full) not in env_files:
+            env_files.append(str(full))
+
+    scan_env = base.scan_environment
+    if "secrets.environment" in repo.explicit and repo.scan_environment:
+        scan_env = True
+    if "secrets.environment" in repo.explicit and base.scan_environment and not repo.scan_environment:
+        ignored.append("secrets.environment: false")
+
+    merged = Policy(actions, passthrough, base.allow, tuple(env_files), scan_env, base.source)
+    return merged, ignored
+
+
+@dataclass(frozen=True)
+class EffectivePolicy:
+    policy: Policy
+    sources: list[str]
+    ignored: list[str] = field(default_factory=list)
+    skipped_repo_file: Path | None = None
+
+
+def effective_policy(cwd: Path, explicit: Path | None) -> EffectivePolicy:
+    """The policy `egressguard run` uses.
+
+    Trusted, may loosen: the file given with --policy; otherwise ~/.egressguard/config.yml; otherwise
+    the built-in defaults. Not trusted, may only tighten: ./.egressguard.yml, unless --policy was given.
+    """
+    repo_file = find_policy(cwd)
+    if explicit is not None:
+        skipped = repo_file if repo_file and repo_file.resolve() != explicit.resolve() else None
+        return EffectivePolicy(load_policy(explicit), [str(explicit)], skipped_repo_file=skipped)
+    user = user_config_path()
+    if user.is_file():
+        base, sources = load_policy(user), [str(user)]
+    else:
+        base, sources = Policy.default(), ["built-in defaults"]
+    if repo_file is None:
+        return EffectivePolicy(base, sources)
+    merged, ignored = merge_repo_policy(base, load_policy(repo_file), cwd)
+    return EffectivePolicy(merged, [*sources, f"{repo_file} (may only tighten)"], ignored)

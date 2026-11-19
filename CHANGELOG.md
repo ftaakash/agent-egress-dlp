@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A `.egressguard.yml` in the project directory may now only tighten the policy: weaker actions, allowlist
+  entries, extra passthrough hosts, `.env` files outside the project and `secrets.environment: false` from it
+  are ignored and named at start. Loosening comes only from `--policy FILE` or `~/.egressguard/config.yml`.
+  Breaking: a project file that loosened the defaults in 0.1.0 must move to one of those two places.
+
 ## 0.1.0 - 2026-11-17
 
 First release.

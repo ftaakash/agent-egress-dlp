@@ -29,9 +29,22 @@ def eg_run(
     cmd: list[str],
     *,
     policy: str = f"passthrough_hosts: [{MODEL}]\n",
+    via: str = "flag",
+    repo_policy: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    (work / ".egressguard.yml").write_text(policy, encoding="utf-8")
+    """`policy` is trusted: passed with --policy (via="flag") or as the user config (via="user").
+    `repo_policy` is written to the project's .egressguard.yml, which may only tighten."""
     args = [sys.executable, "-m", "egressguard.cli", "run", "--extra-ca", str(pki / "upstream-ca.pem")]
+    if via == "flag":
+        trusted = work.parent / "trusted-policy.yml"
+        trusted.write_text(policy, encoding="utf-8")
+        args += ["--policy", str(trusted)]
+    else:
+        home = Path(os.environ["EGRESSGUARD_HOME"])
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "config.yml").write_text(policy, encoding="utf-8")
+    if repo_policy is not None:
+        (work / ".egressguard.yml").write_text(repo_policy, encoding="utf-8")
     for host, (ip, port) in upstream.resolve_map().items():
         args += ["--resolve", f"{host}={ip}:{port}"]
     return subprocess.run(
@@ -169,10 +182,45 @@ def test_command_not_found(upstream: FakeUpstream, pki: Path, work: Path) -> Non
     assert "not found" in r.stderr
 
 
-def test_weakening_policy_is_announced(upstream: FakeUpstream, pki: Path, work: Path) -> None:
-    r = eg_run(upstream, pki, work, [*AGENT_PY, "exit:0"], policy="rules:\n  aws_access_key: log\n")
-    assert r.returncode == 0
+def test_user_config_can_loosen_and_is_announced(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(
+        upstream, pki, work, [*AGENT_PY, "block"], policy="rules:\n  aws_access_key: log\n", via="user"
+    )
+    assert r.stdout.startswith("200"), r.stdout + r.stderr  # the user's own config is trusted
     assert "weakens the defaults: aws_access_key: log (default block)" in r.stderr
+
+
+def test_acceptance_repo_policy_cannot_loosen(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    repo = (
+        "rules:\n  aws_access_key: log\n"
+        f"allow:\n  - host: {TOOLS}\n    rules: [aws_access_key]\n"
+        "passthrough_hosts: [api.model.test, tools.example.test]\n"
+    )
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "block"], via="user", repo_policy=repo)
+    assert r.stdout.startswith("403 egressguard: blocked"), r.stdout + r.stderr
+    assert upstream.requests_to(TOOLS) == []
+    assert "ignored" in r.stderr
+    assert "aws_access_key: log" in r.stderr
+    assert f"allow {TOOLS}" in r.stderr
+    assert f"passthrough {TOOLS}" in r.stderr
+
+
+def test_repo_policy_can_tighten(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "redact"], via="user", repo_policy="rules:\n  email: block\n")
+    assert r.stdout.startswith("403 egressguard: blocked"), r.stdout + r.stderr
+    assert "email in header:User-Agent" in r.stdout
+
+
+def test_explicit_policy_flag_skips_repo_file(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "redact"], repo_policy="rules:\n  email: block\n")
+    assert r.stdout.startswith("200"), r.stdout + r.stderr
+    assert "not used because --policy was given" in r.stderr
+
+
+def test_bad_repo_policy_exits_2(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "exit:0"], via="user", repo_policy="rules:\n  nope: block\n")
+    assert r.returncode == 2
+    assert "nope" in r.stderr
 
 
 def test_invalid_git_config_count_is_tolerated(tmp_path: Path) -> None:

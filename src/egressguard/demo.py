@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from .fakes import FakeUpstream, make_fake_pki
+from .policy import load_policy
 from .report import report
 from .runner import run
 
@@ -68,7 +69,8 @@ def demo() -> int:
             _say("== 1. What the agent saw (egressguard run -- python -m egressguard.demo_agent all)")
             code = run(
                 [sys.executable, "-m", "egressguard.demo_agent", "all"],
-                policy_path=work / ".egressguard.yml",
+                policy=load_policy(work / ".egressguard.yml"),
+                policy_label="demo policy (the fake model host passes through)",
                 log_path=log,
                 extra_ca=[ca],
                 resolve=up.resolve_map(),

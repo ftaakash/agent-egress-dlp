@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .fakes import port_is_listening
+from .policy import Policy
 from .proxy import ca_dir
 from .session import SessionConfig
 
@@ -169,19 +170,23 @@ def _resolve_command(cmd: list[str]) -> list[str] | None:
 def run(
     cmd: list[str],
     *,
-    policy_path: Path | None,
+    policy: Policy,
+    policy_label: str,
     log_path: Path,
     extra_ca: list[Path],
     resolve: dict[str, tuple[str, int]],
     cwd: Path,
     out: Writer = sys.stderr,
 ) -> int:
-    """Run `cmd` behind the proxy. Returns the command's exit code."""
+    """Run `cmd` behind the proxy with `policy` (already merged and validated). Returns its exit code."""
     resolved = _resolve_command(cmd)
     if resolved is None:
         print(f"egressguard: command not found: {cmd[0]}", file=out)
         return 127
     session_dir = Path(tempfile.mkdtemp(prefix="egressguard-"))
+    # The proxy gets the merged policy, never a repository's raw file. JSON is valid YAML for load_policy.
+    policy_path = session_dir / "policy.json"
+    policy_path.write_text(json.dumps(policy.to_data(), indent=2), encoding="utf-8")
     cfg = SessionConfig.new(
         cwd=cwd,
         policy_path=policy_path,
@@ -197,7 +202,7 @@ def run(
         env = child_env(os.environ, url, session_dir, proxy.ca_cert, extra_ca)
         print(
             f"egressguard: proxy on 127.0.0.1:{proxy.port}, session {cfg.session_id}, "
-            f"policy {policy_path or 'built-in defaults'}, log {log_path}",
+            f"policy {policy_label}, log {log_path}",
             file=out,
             flush=True,
         )
