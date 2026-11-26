@@ -52,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="HOST=IP:PORT",
         help="connect to HOST at IP:PORT instead (for local test servers, like curl --resolve); repeatable",
     )
+    run.add_argument(
+        "--quiet",
+        action="store_true",
+        help="no live notice for each block or redaction (the summary still prints)",
+    )
     run.add_argument("cmd", nargs=argparse.REMAINDER, metavar="-- COMMAND [ARGS...]")
 
     r = sub.add_parser("report", help="summarise the event log")
@@ -115,6 +120,7 @@ def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
             extra_ca=[p.resolve() for p in args.extra_ca],
             resolve=dict(args.resolve),
             cwd=cwd,
+            notices=not args.quiet,
         )
     except ProxyStartError as e:
         print(f"egressguard: {e}", file=sys.stderr)

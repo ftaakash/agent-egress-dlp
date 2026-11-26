@@ -13,14 +13,17 @@ from .eventlog import EventLog
 from .policy import Policy
 from .rules import Finding, Scanner, redact
 
-BLOCK_HEADER = "X-Egressguard"
+# Response header that tells the client what egressguard did to its request. Never sent upstream.
+NOTICE_HEADER = "X-Egressguard"
+BLOCK_HEADER = NOTICE_HEADER  # name kept for compatibility
+_REDACTED_KEY = "egressguard_redacted"
 
 
-def _block(flow: http.HTTPFlow, text: str) -> None:
+def _block(flow: http.HTTPFlow, text: str, notice: str = "blocked") -> None:
     flow.response = http.Response.make(
         403,
         text.encode("utf-8"),
-        {"Content-Type": "text/plain; charset=utf-8", BLOCK_HEADER: "blocked"},
+        {"Content-Type": "text/plain; charset=utf-8", NOTICE_HEADER: notice},
     )
 
 
@@ -79,7 +82,15 @@ class EgressGuard:
             self._inspect(flow)
         except Exception as e:  # fail closed: never forward a request we could not inspect
             self.log.write("addon_error", host=flow.request.host, error=type(e).__name__)
-            _block(flow, "egressguard: internal error, request blocked (fail closed)\n")
+            _block(
+                flow, "egressguard: internal error, request blocked (fail closed)\n", "blocked; reason=error"
+            )
+
+    def response(self, flow: http.HTTPFlow) -> None:
+        """Tell the client a request was redacted: a 200 alone would look as if nothing happened."""
+        rules = flow.metadata.get(_REDACTED_KEY)
+        if rules and flow.response is not None:
+            flow.response.headers[NOTICE_HEADER] = f"redacted; rules={','.join(rules)}"
 
     def websocket_message(self, flow: http.HTTPFlow) -> None:
         """Outbound WebSocket messages: block drops the message, redact rewrites a text message."""
@@ -193,6 +204,7 @@ class EgressGuard:
                 flow,
                 f"egressguard: blocked request to {host}: {reason}. The value was not sent. "
                 "Remove it from the request, or allow it for this host in .egressguard.yml.\n",
+                f"blocked; rules={','.join(sorted({f.rule for f in blocking} or {first.rule}))}",
             )
             return
 
@@ -200,6 +212,7 @@ class EgressGuard:
             self._log_finding(f, act[f.rule], host, method)
         if redacting:
             self._apply_redactions(flow, redacting, body)
+            flow.metadata[_REDACTED_KEY] = sorted({f.rule for f in redacting})
         outcome = "redacted" if redacting else "forwarded"
         self.log.write("request", host=host, method=method, path=log_path, outcome=outcome)
 

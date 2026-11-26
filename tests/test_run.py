@@ -31,6 +31,7 @@ def eg_run(
     policy: str = f"passthrough_hosts: [{MODEL}]\n",
     via: str = "flag",
     repo_policy: str | None = None,
+    extra: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     """`policy` is trusted: passed with --policy (via="flag") or as the user config (via="user").
     `repo_policy` is written to the project's .egressguard.yml, which may only tighten."""
@@ -48,7 +49,12 @@ def eg_run(
     for host, (ip, port) in upstream.resolve_map().items():
         args += ["--resolve", f"{host}={ip}:{port}"]
     return subprocess.run(
-        [*args, "--", *cmd], cwd=work, capture_output=True, text=True, timeout=120, env=dict(os.environ)
+        [*args, *extra, "--", *cmd],
+        cwd=work,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=dict(os.environ),
     )
 
 
@@ -260,3 +266,19 @@ def test_ctrl_c_during_startup_kills_the_proxy(
 
     time.sleep(4)
     assert not cfg.ready_file.exists()
+
+
+def test_acceptance_live_notices_in_terminal(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "block"])
+    assert f"egressguard: blocked aws_access_key in body ({TOOLS})" in r.stderr, r.stderr
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "redact"])
+    assert f"egressguard: redacted email in header:User-Agent ({TOOLS})" in r.stderr, r.stderr
+    # values never appear in the notices
+    assert "AKIAIOSFODNN7EXAMPLE" not in r.stderr and "dev.user@example.com" not in r.stderr
+
+
+def test_quiet_turns_live_notices_off(upstream: FakeUpstream, pki: Path, work: Path) -> None:
+    r = eg_run(upstream, pki, work, [*AGENT_PY, "block"], extra=("--quiet",))
+    assert r.stdout.startswith("403"), r.stdout + r.stderr
+    assert "egressguard: blocked aws_access_key" not in r.stderr
+    assert "1 blocked" in r.stderr  # the end-of-session summary still prints

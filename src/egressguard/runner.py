@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -177,8 +178,12 @@ def run(
     resolve: dict[str, tuple[str, int]],
     cwd: Path,
     out: Writer = sys.stderr,
+    notices: bool = True,
 ) -> int:
-    """Run `cmd` behind the proxy with `policy` (already merged and validated). Returns its exit code."""
+    """Run `cmd` behind the proxy with `policy` (already merged and validated). Returns its exit code.
+
+    With `notices`, every block and redaction is printed to `out` as it happens, so the person running the
+    agent sees it even when the agent does not."""
     resolved = _resolve_command(cmd)
     if resolved is None:
         print(f"egressguard: command not found: {cmd[0]}", file=out)
@@ -196,6 +201,7 @@ def run(
         extra_ca=extra_ca,
     )
     proxy: ProxyProcess | None = None
+    watcher = LiveNotices(log_path, cfg.session_id, out) if notices else None
     try:
         proxy = start_proxy(cfg)
         url = f"http://127.0.0.1:{proxy.port}"
@@ -206,6 +212,8 @@ def run(
             file=out,
             flush=True,
         )
+        if watcher is not None:
+            watcher.start()
         child = subprocess.Popen(resolved, env=env, cwd=cwd)
         while True:
             try:
@@ -217,8 +225,73 @@ def run(
     finally:
         if proxy is not None:
             proxy.stop()
+        if watcher is not None:
+            watcher.stop()  # prints anything the proxy logged after the last poll
         shutil.rmtree(session_dir, ignore_errors=True)
         _session_summary(log_path, cfg.session_id, out)
+
+
+def notice_line(event: dict[str, object]) -> str | None:
+    """One terminal line for a log event, or None. Never includes a matched value (the log has none)."""
+    kind = event.get("event")
+    host = event.get("host")
+    if kind == "finding":
+        verb = {"block": "blocked", "redact": "redacted"}.get(str(event.get("action")))
+        if verb:
+            return f"egressguard: {verb} {event.get('rule')} in {event.get('where')} ({host})"
+    elif kind == "tcp_blocked":
+        return f"egressguard: closed a non-HTTP connection to {host} (a value matched a rule)"
+    elif kind == "addon_error":
+        return f"egressguard: blocked a request to {host} after an internal error (fail closed)"
+    return None
+
+
+class LiveNotices:
+    """Follows this session's lines in the event log and prints a notice for each block or redaction."""
+
+    def __init__(self, log_path: Path, session: str, out: Writer, interval: float = 0.25) -> None:
+        self.log_path = log_path
+        self.session = session
+        self.out = out
+        self.interval = interval
+        self._offset = log_path.stat().st_size if log_path.exists() else 0
+        self._partial = b""
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name="egressguard-notices", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=5)
+        self._poll()
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.interval):
+            self._poll()
+
+    def _poll(self) -> None:
+        try:
+            with self.log_path.open("rb") as f:
+                f.seek(self._offset)
+                chunk = f.read()
+        except OSError:
+            return
+        self._offset += len(chunk)
+        data = self._partial + chunk
+        lines = data.split(b"\n")
+        self._partial = lines.pop()  # an unfinished last line is kept for the next poll
+        for raw in lines:
+            try:
+                event = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("session") == self.session:
+                line = notice_line(event)
+                if line:
+                    print(line, file=self.out, flush=True)
 
 
 def _session_summary(log_path: Path, session: str, out: Writer) -> None:

@@ -16,4 +16,4 @@ Not built. Collected after the scope was frozen and from the risk spike.
   document a wrapper or detect and warn.
 - `egressguard run` could warn when the agent's environment already has a `NO_PROXY` it removes.
 - **Log size**: `egressguard run` and `report` read the whole append-only log; add rotation or per-session counters once logs grow (code review, 2026-11-17).
-- **Tell the agent about redactions** (real-agent run, 2026-11-26): Claude Code reported the email as "not flagged" because a redacted request still returns the upstream 200. Options: an `X-Egressguard: redacted rules=email` response header, or a stderr notice from `egressguard run`.
+- **Make redaction visible without headers**: plain `curl` does not show the `X-Egressguard` header. An opt-in notice in text/plain bodies, or a hint in the agent's own transcript, would reach agents that never read headers.

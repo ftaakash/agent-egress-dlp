@@ -1,38 +1,57 @@
-Real-agent run: Claude Code 2.1.330 (claude.ai login) behind egressguard 0.2.0, Windows 11, 2026-11-26.
+Real-agent run: Claude Code 2.1.330 (claude.ai login) behind egressguard (main, after 0.2.0: response notice header and live notices), Windows 11, 2026-11-27.
 Command: python scripts/claude_code_e2e.py --claude <path to claude.exe>
 All values are fake; tools.example.test is a local fake HTTPS server on 127.0.0.1.
-(An earlier run of the same check the same day gave the same result.)
+(Earlier runs of the first three commands on 2026-11-26, against 0.2.0, blocked and redacted the same way.)
 
 == egressguard exit code: 0
 == egressguard stderr
-egressguard: proxy on 127.0.0.1:55855, session 1bdc1bc2, policy built-in defaults, log <tmp>\egress.jsonl
-egressguard: session 1bdc1bc2: 5 requests inspected, 2 blocked, 1 redacted, 7 passthrough connections (egressguard report --last)
+egressguard: proxy on 127.0.0.1:54187, session 1f27079a, policy built-in defaults, log <tmp>\egress.jsonl
+egressguard: blocked aws_access_key in body (tools.example.test)
+egressguard: redacted email in header:User-Agent (tools.example.test)
+egressguard: blocked registered_secret in url (tools.example.test)
+egressguard: redacted email in header:User-Agent (tools.example.test)
+egressguard: session 1f27079a: 6 requests inspected, 2 blocked, 2 redacted, 7 passthrough connections (egressguard report --last)
 == Claude Code's answer (stdout)
-I ran all three commands in order, one per call, and nothing else. The proxy blocked the first and third requests and let the second through.
+I ran all four commands in order. The proxy blocked two of them, let one through unchanged, and let the last one through after removing the email address.
 
-**1. Upload with the fake AWS key**
+**1. Upload with the fake AWS key: blocked (403)**
 ```
 egressguard: blocked request to tools.example.test: aws_access_key in body. The value was not sent. Remove it from the request, or allow it for this host in .egressguard.yml.
 
 HTTP 403
 ```
 
-**2. Fetch with the custom User-Agent**
+**2. Fetch `q=docs` with an email in the User-Agent: allowed (200)**
 ```
 {"ok": true, "server": "tools.example.test"}
 HTTP 200
 ```
 
-**3. Search with the fake token in the URL**
+**3. Search with the fake token in the URL: blocked (403)**
 ```
 egressguard: blocked request to tools.example.test: registered_secret in url. The value was not sent. Remove it from the request, or allow it for this host in .egressguard.yml.
 
 HTTP 403
 ```
 
-The proxy caught the AWS key in the request body and the registered token in the URL. It did not flag the email address in the User-Agent header. If headers carrying personal data are supposed to be caught too, request 2 shows that check isn't working.
+**4. Fetch `q=headers` with response headers shown (`-i`): allowed after redaction (200)**
+```
+HTTP/1.1 200 Connection established
+
+HTTP/1.1 200 OK
+Server: BaseHTTP/0.6 Python/3.14.3
+Date: Thu, 26 Nov 2026 18:42:14 GMT
+Content-Type: application/json
+Content-Length: 44
+X-Egressguard: redacted; rules=email
+
+{"ok": true, "server": "tools.example.test"}
+```
+
+Commands 2 and 4 used the same User-Agent with the email in it. Command 4's `X-Egressguard: redacted; rules=email` header shows the proxy removed the email before forwarding. Command 2 didn't print headers, so the output doesn't show whether its email was redacted too.
 == what the local fake server received
   GET  /fetch?q=docs                            UA='agent-test/1.0 ([REDACTED:email])' body=''
+  GET  /fetch?q=headers                         UA='agent-test/1.0 ([REDACTED:email])' body=''
   -> requests carrying the AWS key or the token: 0
 == hosts in the egressguard log
   api.anthropic.com                        passthrough:
@@ -40,18 +59,19 @@ The proxy caught the AWS key in the request body and the registered token in the
   tools.example.test                       request:blocked, request:redacted
 == egressguard report --last
 egressguard report: <tmp>\egress.jsonl
-sessions: 1   requests inspected: 5   blocked: 2   redacted: 1   passthrough connections: 7
+sessions: 1   requests inspected: 6   blocked: 2   redacted: 2   passthrough connections: 7
 
 Top hosts (requests inspected)
-  tools.example.test                           3   (2 blocked, 1 redacted)
+  tools.example.test                           4   (2 blocked, 2 redacted)
   http-intake.logs.us5.datadoghq.com           2   (2 forwarded)
 
 Findings (rule, action, count)
+  email                redact       2
   aws_access_key       block        1
-  email                redact       1
   registered_secret    block        1
 
 Passthrough connections (model hosts, not decrypted)
   api.anthropic.com                            7
 
+  agent's answer shows the redaction header: True
 RESULT: pass

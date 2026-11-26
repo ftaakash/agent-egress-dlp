@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Responses to redacted requests now carry `X-Egressguard: redacted; rules=...` (blocked ones carry
+  `blocked; rules=...`), so an agent that reads headers can tell a value was removed. Found in the end-to-end
+  run with Claude Code, where the agent took a redacted request's plain 200 to mean nothing was caught.
+- `egressguard run` prints a live line in your terminal for every block and redaction (`--quiet` turns it off).
+- `scripts/claude_code_e2e.py`: contained end-to-end check with a real Claude Code CLI.
+
 ## 0.2.0 - 2026-11-26
 
 - A `.egressguard.yml` in the project directory may now only tighten the policy: weaker actions, allowlist

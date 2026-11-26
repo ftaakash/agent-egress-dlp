@@ -5,7 +5,7 @@ from __future__ import annotations
 import gzip
 from pathlib import Path
 
-from conftest import MODEL, OTHER, TOOLS, StartProxy, send
+from conftest import MODEL, OTHER, TOOLS, StartProxy, send, send_full
 
 from egressguard.fakes import FakeUpstream
 
@@ -164,3 +164,27 @@ def test_spoofed_host_header_does_not_unlock_allowlist(proxy: StartProxy, upstre
     )
     assert status == 403, body
     assert upstream.requests_to(OTHER) == []
+
+
+def test_acceptance_redacted_response_tells_the_client(proxy: StartProxy, upstream: FakeUpstream) -> None:
+    px = proxy()
+    status, headers, _ = send_full(
+        f"https://{TOOLS}/fetch?q=docs",
+        proxy_port=px.proc.port,
+        trust=px.trust,
+        headers={"User-Agent": "agent/1.0 (someone@example.org)", "X-Note": "also jane@example.org"},
+    )
+    assert status == 200
+    assert headers.get("X-Egressguard") == "redacted; rules=email"
+    # the header goes to the agent only, never upstream
+    assert "X-Egressguard" not in upstream.requests_to(TOOLS)[0]["headers"]
+
+
+def test_clean_and_blocked_responses_headers(proxy: StartProxy, upstream: FakeUpstream) -> None:
+    px = proxy()
+    _, clean, _ = send_full(f"https://{TOOLS}/ok", proxy_port=px.proc.port, trust=px.trust)
+    assert "X-Egressguard" not in clean
+    _, blocked, _ = send_full(
+        f"https://{TOOLS}/up", proxy_port=px.proc.port, trust=px.trust, data=f"k={AWS}".encode()
+    )
+    assert blocked.get("X-Egressguard") == "blocked; rules=aws_access_key"

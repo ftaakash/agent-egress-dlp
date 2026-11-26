@@ -99,6 +99,19 @@ def send(
     headers: dict[str, str] | None = None,
 ) -> tuple[int, str]:
     """One HTTPS request with Python urllib through the proxy; returns (status, body)."""
+    status, _, body = send_full(url, proxy_port=proxy_port, trust=trust, data=data, headers=headers)
+    return status, body
+
+
+def send_full(
+    url: str,
+    *,
+    proxy_port: int | None,
+    trust: Path,
+    data: bytes | None = None,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, dict[str, str], str]:
+    """Like `send`, but also returns the response headers."""
     ctx = ssl.create_default_context(cafile=str(trust))
     handlers: list[urllib.request.BaseHandler] = [urllib.request.HTTPSHandler(context=ctx)]
     if proxy_port is not None:
@@ -108,6 +121,6 @@ def send(
     req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
         with opener.open(req, timeout=15) as r:
-            return r.status, r.read().decode("utf-8", "replace")
+            return r.status, dict(r.headers.items()), r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        return e.code, e.read().decode("utf-8", "replace")
+        return e.code, dict(e.headers.items()), e.read().decode("utf-8", "replace")

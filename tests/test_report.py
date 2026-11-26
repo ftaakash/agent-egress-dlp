@@ -85,3 +85,47 @@ def test_empty_hmac_key_file_is_an_error(tmp_path: Path, monkeypatch: pytest.Mon
     (tmp_path / "hmac.key").write_bytes(b"")  # another process created it and has not written yet
     with pytest.raises(RuntimeError, match="hmac.key"):
         EventLog(tmp_path / "l.jsonl", "s")
+
+
+def test_notice_lines_name_rule_and_place_never_value() -> None:
+    from egressguard.runner import notice_line
+
+    ev = {
+        "event": "finding",
+        "rule": "email",
+        "action": "redact",
+        "where": "body",
+        "host": "x.test",
+        "value": "hmac:ab",
+    }
+    assert notice_line(ev) == "egressguard: redacted email in body (x.test)"
+    assert notice_line({**ev, "action": "block"}) == "egressguard: blocked email in body (x.test)"
+    for quiet in ("log", "allow", "dropped"):
+        assert notice_line({**ev, "action": quiet}) is None
+    assert notice_line({"event": "request", "host": "x.test"}) is None
+    assert "x.test" in (notice_line({"event": "tcp_blocked", "host": "x.test"}) or "")
+
+
+def test_live_notices_handle_partial_lines_and_other_sessions(tmp_path: Path) -> None:
+    import io
+
+    from egressguard.runner import LiveNotices
+
+    log = tmp_path / "l.jsonl"
+    log.write_text(
+        json.dumps({"session": "old", "event": "finding", "action": "block"}) + "\n", encoding="utf-8"
+    )
+    out = io.StringIO()
+    w = LiveNotices(log, "s1", out)  # starts after what is already in the log
+    line = json.dumps({"session": "s1", "event": "finding", "rule": "aws_access_key", "action": "block",
+                       "where": "body", "host": "t.test"})  # fmt: skip
+    other = json.dumps({"session": "s2", "event": "finding", "rule": "email", "action": "redact",
+                        "where": "url", "host": "t.test"})  # fmt: skip
+    with log.open("a", encoding="utf-8") as f:
+        f.write(other + "\n" + line[:20])  # the second line is only half written
+    w._poll()
+    assert out.getvalue() == ""
+    with log.open("a", encoding="utf-8") as f:
+        f.write(line[20:] + "\n")
+    w.stop()
+    assert out.getvalue() == "egressguard: blocked aws_access_key in body (t.test)\n"
