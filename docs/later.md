@@ -2,9 +2,6 @@
 
 Not built. Collected after the scope was frozen and from the risk spike.
 
-- **Licence review of the mitmproxy tree** (user decision 2026-11-17: open for v0.2): `mitmproxy-windows` is
-  LGPL-3.0-or-later; `mitmproxy_rs` declares no licence in its wheel metadata. Produce a full transitive licence
-  list; decide whether a stdlib CONNECT + `ssl` proxy is worth the work.
 - **CRL distribution point on the proxy CA**, served by the proxy, so Schannel curl and git need no relaxed
   revocation checking.
 - **Merge the user's own curl config** into the per-session one instead of replacing it.

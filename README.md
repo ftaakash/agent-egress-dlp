@@ -213,11 +213,17 @@ show as `dropped`), and passthrough connections.
 
 ## Dependencies and licences
 
-egressguard is MIT licensed. Its direct dependencies are `mitmproxy` (MIT), `cryptography`
-(Apache-2.0 OR BSD-3-Clause), `certifi` (MPL-2.0) and `ruamel.yaml` (MIT). mitmproxy is heavy: it brings about
-40 packages, including `mitmproxy-windows` (LGPL-3.0-or-later, Windows only) and `mitmproxy_rs`, whose wheel
-metadata declares no licence. These were accepted for v0.1; the licence review is open for v0.2
-(see [docs/later.md](docs/later.md)).
+egressguard is MIT licensed and contains no third-party code. Its direct dependencies are `mitmproxy` (MIT),
+`cryptography` (Apache-2.0 OR BSD-3-Clause), `certifi` (MPL-2.0) and `ruamel.yaml` (MIT). mitmproxy is heavy:
+a clean install pulls in 42 packages (83 MB on Windows). A review of all of them is in
+[docs/licences.md](docs/licences.md). In short:
+
+- all permissive (MIT, BSD, Apache-2.0, PSF) except four LGPL packages, `ldap3`, `urwid`, and on Windows
+  `mitmproxy-windows` (bundles the WinDivert driver) and `pydivert`, plus MPL-2.0 files in `certifi` and
+  `publicsuffix2`; none is GPL-only;
+- `mitmproxy_rs` and `mitmproxy-linux`, whose wheels declare no licence, are MIT upstream;
+- installing egressguard from source or as a wheel uses these as separate, unmodified libraries, which fits
+  MIT. A single bundled executable would need more care (see the review). This is not legal advice.
 
 ## How it differs from nearby tools
 
@@ -233,7 +239,6 @@ metadata declares no licence. These were accepted for v0.1; the licence review i
 See [docs/later.md](docs/later.md). Next up:
 
 - tests with Codex and with real MCP servers over HTTP;
-- licence review of the mitmproxy dependency tree;
 - a CRL endpoint for the proxy CA, and merging your own curl config instead of replacing it;
 - macOS.
 
