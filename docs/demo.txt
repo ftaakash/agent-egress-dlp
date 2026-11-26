@@ -1,9 +1,9 @@
 egressguard demo: local servers on 127.0.0.1, fake values, nothing leaves this machine.
-  fake third-party site: tools.example.test   -> 127.0.0.1:54549
-  fake model API:        api.model.test       -> 127.0.0.1:54550  (passthrough)
+  fake third-party site: tools.example.test   -> 127.0.0.1:59483
+  fake model API:        api.model.test       -> 127.0.0.1:59484  (passthrough)
 
 == 1. What the agent saw (egressguard run -- python -m egressguard.demo_agent all)
-egressguard: proxy on 127.0.0.1:54553, session bd748055, policy demo policy (the fake model host passes through), log <tmp>\egress.jsonl
+egressguard: proxy on 127.0.0.1:59487, session ab1c08a4, policy demo policy (the fake model host passes through), log <tmp>\egress.jsonl
   [python] POST tools  body has an AWS key                       -> 403 egressguard: blocked request to tools.example.test: aws_access_key in body
   [python] GET  tools  email in User-Agent                       -> 200 {"ok": true, "server": "tools.example.test"}
   [python] GET  tools  $DEMO_API_TOKEN in URL                    -> 403 egressguard: blocked request to tools.example.test: registered_secret in url
@@ -13,7 +13,7 @@ egressguard: proxy on 127.0.0.1:54553, session bd748055, policy demo policy (the
   [curl]   POST model  prompt (trusts ONLY the real server's CA) -> 200 {"ok": true, "server": "api.model.test"}
   [node]   POST tools  body has an AWS key                       -> 403 egressguard: blocked request to tools.example.test: aws_access_key in body
   [node]   GET  tools  email in User-Agent                       -> 200 {"ok": true, "server": "tools.example.test"}
-egressguard: session bd748055: 7 requests inspected, 4 blocked, 3 redacted, 2 passthrough connections (egressguard report --last)
+egressguard: session ab1c08a4: 7 requests inspected, 4 blocked, 3 redacted, 2 passthrough connections (egressguard report --last)
 
 == 2. What the servers actually received
   tools.example.test   GET  /fetch?q=docs            User-Agent: demo-agent/1.0 ([REDACTED:email])

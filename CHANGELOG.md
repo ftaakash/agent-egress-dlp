@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-11-26
 
 - A `.egressguard.yml` in the project directory may now only tighten the policy: weaker actions, allowlist
   entries, extra passthrough hosts, `.env` files outside the project and `secrets.environment: false` from it
