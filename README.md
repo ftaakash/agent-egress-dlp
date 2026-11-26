@@ -12,8 +12,9 @@ before it leaves your machine, and passes model-API traffic through without decr
 egressguard run -- claude
 ```
 
-**Status:** v0.2.0, an early release. It is tested against local fake servers on Windows and Linux, not yet end
-to end with a real agent. If you try it in front of one, please [tell me what happened](#feedback-wanted).
+**Status:** v0.2.0, an early release. It is tested in CI against local fake servers on Windows and Linux, and
+[end to end with Claude Code](#tested-with-a-real-agent) on Windows. If you try it in front of your agent,
+please [tell me what happened](#feedback-wanted).
 
 ## The problem
 
@@ -77,6 +78,27 @@ Node, then shows what the servers received. Real output from Windows 11 (full ru
 The model-host lines are the passthrough proof: those clients trust only the fake server's own CA, so a 200
 means egressguard did not present its own certificate, so it did not decrypt the connection. All values are
 fake (the AWS documentation example key and an `example.com` address).
+
+## Tested with a real agent
+
+Claude Code 2.1.330 (signed in with a claude.ai account) on Windows 11, behind egressguard 0.2.0, on
+2026-11-26. The agent was allowed to run only `curl`, and was asked to send three fake values to a local fake
+server; no user settings, hooks or MCP servers were loaded. Reproduce it with
+`python scripts/claude_code_e2e.py --claude <path to claude>`. Full output: [docs/real-agent-claude-code.txt](docs/real-agent-claude-code.txt).
+
+| The agent ran `curl` with | egressguard | The server received |
+|---|---|---|
+| the AWS example key in the body | blocked: 403 naming `aws_access_key` | nothing |
+| a fake email in `User-Agent` | redacted | `agent-test/1.0 ([REDACTED:email])` |
+| a token from the project's `.env` in the URL | blocked: 403 naming `registered_secret` | nothing |
+
+At the same time, Claude Code's own model connections to `api.anthropic.com` (7 in this run) were passed through
+without decryption, and its two telemetry requests to Datadog were decrypted, checked (nothing found) and
+forwarded. So Claude Code used the proxy and trusted the per-session CA without any change to the system.
+
+One thing it showed: redaction is silent. The agent read the 200 response and reported that the email was not
+caught, although the server only ever received `[REDACTED:email]`. Blocking is visible to the agent; redacting
+is not (see the roadmap).
 
 ## How it works
 
@@ -174,10 +196,11 @@ show as `dropped`), and passthrough connections.
   check to best effort (the proxy CA has no revocation endpoint).
 - Regex and exact-match detection only: encoded, split or unregistered secrets that do not look like a known
   format are missed.
-- Tested against local fake servers only: 70 tests in CI on Ubuntu and Windows with Python 3.12 and 3.14, and
+- Tested so far: 78 tests in CI on Ubuntu and Windows with Python 3.12 and 3.14 against local fake servers;
   locally on Windows 11 with Python 3.14, Schannel curl 8.18 and 8.22, Node 24 and Git for Windows 2.53
-  (Schannel). Not yet tested: real agents end to end, MCP servers, HTTP/2, streaming, real WebSocket traffic
-  (the WebSocket and raw-TCP checks have unit tests only), macOS.
+  (Schannel); and Claude Code 2.1.330 end to end on Windows 11 (above). Not yet tested: Codex and other agents,
+  Claude Code on Linux or macOS, MCP servers, HTTP/2, streaming, real WebSocket traffic (the WebSocket and
+  raw-TCP checks have unit tests only), macOS.
 
 ## Dependencies and licences
 
@@ -200,7 +223,8 @@ metadata declares no licence. These were accepted for v0.1; the licence review i
 
 See [docs/later.md](docs/later.md). Next up:
 
-- tests in front of real agents (Claude Code, Codex) and real MCP servers over HTTP;
+- tell the agent when something was redacted (for example a response header), since it cannot see it now;
+- tests with Codex and with real MCP servers over HTTP;
 - licence review of the mitmproxy dependency tree;
 - a CRL endpoint for the proxy CA, and merging your own curl config instead of replacing it;
 - macOS.
