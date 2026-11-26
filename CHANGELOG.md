@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-11-27
 
 - Responses to redacted requests now carry `X-Egressguard: redacted; rules=...` (blocked ones carry
   `blocked; rules=...`), so an agent that reads headers can tell a value was removed. Found in the end-to-end

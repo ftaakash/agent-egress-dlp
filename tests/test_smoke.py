@@ -4,5 +4,5 @@ import egressguard
 
 
 def test_version() -> None:
-    assert egressguard.__version__ == "0.2.0"
+    assert egressguard.__version__ == "0.3.0"
     assert version("egressguard") == egressguard.__version__  # pyproject and package agree
