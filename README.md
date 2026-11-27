@@ -12,7 +12,7 @@ before it leaves your machine, and passes model-API traffic through without decr
 egressguard run -- claude
 ```
 
-**Status:** v0.3.0, an early release. It is tested in CI against local fake servers on Windows and Linux, and
+**Status:** v0.3.1, an early release. It is tested in CI against local fake servers on Windows and Linux, and
 [end to end with Claude Code](#tested-with-a-real-agent) on Windows. If you try it in front of your agent,
 please [tell me what happened](#feedback-wanted).
 

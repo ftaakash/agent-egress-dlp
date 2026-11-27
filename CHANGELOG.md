@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 - 2026-11-27
+
+Documentation only; no code changes.
+
+- Licence review of all 42 runtime dependencies in `docs/licences.md`, summarised in the README: all
+  permissive except four LGPL packages and MPL-2.0 files, none GPL-only. `mitmproxy_rs` and `mitmproxy-linux`,
+  whose wheels declare no licence, are MIT upstream. This closes the licence question left open in 0.1.0.
+
 ## 0.3.0 - 2026-11-27
 
 - Responses to redacted requests now carry `X-Egressguard: redacted; rules=...` (blocked ones carry
