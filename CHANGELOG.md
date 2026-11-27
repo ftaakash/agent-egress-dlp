@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `egressguard report` is now an after-session digest: `--last` or `--session ID` shows what left the machine
+  per host (forwarded, redacted, blocked, methods, paths), what was blocked or redacted per rule and where, and
+  the passthrough hosts; without either it lists sessions, newest first, then the totals. `--format markdown`
+  gives the same as Markdown tables. No matched values appear in it.
+- `docs/spec.md` records the scope of 0.2, 0.3 and this change.
+
 ## 0.3.1 - 2026-11-27
 
 Documentation only; no code changes.

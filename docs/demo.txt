@@ -1,9 +1,9 @@
 egressguard demo: local servers on 127.0.0.1, fake values, nothing leaves this machine.
-  fake third-party site: tools.example.test   -> 127.0.0.1:62884
-  fake model API:        api.model.test       -> 127.0.0.1:62885  (passthrough)
+  fake third-party site: tools.example.test   -> 127.0.0.1:62353
+  fake model API:        api.model.test       -> 127.0.0.1:62354  (passthrough)
 
 == 1. What the agent saw (egressguard run -- python -m egressguard.demo_agent all)
-egressguard: proxy on 127.0.0.1:62888, session e056db07, policy demo policy (the fake model host passes through), log <tmp>\egress.jsonl
+egressguard: proxy on 127.0.0.1:62357, session 0304c29e, policy demo policy (the fake model host passes through), log <tmp>\egress.jsonl
   [python] POST tools  body has an AWS key                       -> 403 egressguard: blocked request to tools.example.test: aws_access_key in body
   [python] GET  tools  email in User-Agent                       -> 200 {"ok": true, "server": "tools.example.test"}
   [python] GET  tools  $DEMO_API_TOKEN in URL                    -> 403 egressguard: blocked request to tools.example.test: registered_secret in url
@@ -20,7 +20,7 @@ egressguard: redacted email in header:User-Agent (tools.example.test)
   [node]   GET  tools  email in User-Agent                       -> 200 {"ok": true, "server": "tools.example.test"}
 egressguard: blocked aws_access_key in body (tools.example.test)
 egressguard: redacted email in header:User-Agent (tools.example.test)
-egressguard: session e056db07: 7 requests inspected, 4 blocked, 3 redacted, 2 passthrough connections (egressguard report --last)
+egressguard: session 0304c29e: 7 requests inspected, 4 blocked, 3 redacted, 2 passthrough connections (egressguard report --last)
 
 == 2. What the servers actually received
   tools.example.test   GET  /fetch?q=docs            User-Agent: demo-agent/1.0 ([REDACTED:email])
@@ -31,19 +31,26 @@ egressguard: session e056db07: 7 requests inspected, 4 blocked, 3 redacted, 2 pa
   -> 3 requests reached tools.example.test, none with the AWS key or the token; 2 reached api.model.test unchanged.
 
 == 3. egressguard report --last
-egressguard report: <demo log>
-sessions: 1   requests inspected: 7   blocked: 4   redacted: 3   passthrough connections: 2
+egressguard session 0304c29e
 
-Top hosts (requests inspected)
-  tools.example.test                           7   (4 blocked, 3 redacted)
+  Started 2026-11-27 08:53:24 UTC, ended 2026-11-27 08:53:25 UTC (1s)
+  Requests inspected: 7, blocked: 4, redacted: 3, passthrough connections: 2
 
-Findings (rule, action, count)
-  email                dropped      4
-  aws_access_key       block        3
-  email                redact       3
-  registered_secret    block        1
+What left the machine
+  Host                                      Forwarded  Redacted  Blocked (not sent)  Methods       Paths
+  tools.example.test                                0         3                   4  POST, GET     /upload, /fetch, /search
 
-Passthrough connections (model hosts, not decrypted)
-  api.model.test                               2
+Blocked and redacted, by rule
+  Rule                  Action    Where                     Hosts                           Count
+  email                 dropped   header:User-Agent         tools.example.test                  4
+  aws_access_key        block     body                      tools.example.test                  3
+  email                 redact    header:User-Agent         tools.example.test                  3
+  registered_secret     block     url                       tools.example.test                  1
+
+Passthrough (model API hosts, not decrypted)
+  Host                                      Connections
+  api.model.test                                      2
+
+This report and the log hold no matched values; the log keeps only keyed hashes of them.
 
 Demo passed. All servers stopped; temporary files removed.

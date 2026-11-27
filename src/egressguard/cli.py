@@ -9,7 +9,7 @@ from pathlib import Path
 from . import __version__
 from .eventlog import default_log_path
 from .policy import PolicyError, effective_policy
-from .report import report
+from .report import render
 
 
 def _resolve_arg(value: str) -> tuple[str, tuple[str, int]]:
@@ -61,7 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("report", help="summarise the event log")
     r.add_argument("--log", type=Path, help="event log (default: ~/.egressguard/egress.jsonl)")
-    r.add_argument("--last", action="store_true", help="only the most recent session")
+    which = r.add_mutually_exclusive_group()
+    which.add_argument("--last", action="store_true", help="digest of the most recent session")
+    which.add_argument("--session", metavar="ID", help="digest of the session with this id")
+    r.add_argument(
+        "--format", choices=["text", "markdown"], default="text", help="output format (default: text)"
+    )
 
     sub.add_parser("demo", help="run the local demo (fake servers, fake values, no network)")
     return p
@@ -73,8 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         return _run(parser, args)
     if args.command == "report":
-        sys.stdout.write(report(args.log or default_log_path(), last_session=args.last))
-        return 0
+        code, text = render(
+            args.log or default_log_path(), last_session=args.last, session=args.session, fmt=args.format
+        )
+        sys.stdout.write(text)
+        return code
     if args.command == "demo":
         from .demo import demo
 

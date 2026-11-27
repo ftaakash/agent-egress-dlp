@@ -113,3 +113,59 @@ Decisions and the alternative rejected:
 | `ruamel.yaml` | MIT | policy file (already a mitmproxy dependency) |
 
 Dev only: `pytest`, `ruff`, `mypy`. Python 3.12+ (mitmproxy 12 needs it; built and tested on 3.14 here).
+
+## Later versions
+
+### v0.2 (recorded after the fact, 2026-11-27)
+
+A project `.egressguard.yml` may only tighten the policy; loosening comes only from `--policy FILE` or
+`~/.egressguard/config.yml`. Ignored settings are named at start. Tests: `tests/test_policy.py`
+(merge and precedence), `tests/test_run.py::test_acceptance_repo_policy_cannot_loosen`.
+
+### v0.3 (recorded after the fact, 2026-11-27)
+
+Responses to redacted or blocked requests carry `X-Egressguard` (`redacted; rules=...` / `blocked; rules=...`),
+never sent upstream; `egressguard run` prints a live terminal line per block and redaction (`--quiet` turns it
+off). Tests: `tests/test_actions.py::test_acceptance_redacted_response_tells_the_client`,
+`tests/test_run.py::test_acceptance_live_notices_in_terminal`. 0.3.1 added the dependency licence review only.
+
+### v0.4 scope: session digest (frozen 2026-11-27, before building)
+
+One feature: `egressguard report` becomes an after-session digest a person can scan in a minute, built only
+from the event log egressguard already writes. Why: people running agents ask for a log they can actually read
+after a session, and audit-trail tools sell this on its own; here it comes with the proxy.
+
+**Command**
+
+```
+egressguard report [--log FILE] [--last | --session ID] [--format text|markdown]
+```
+
+- With `--last` or `--session ID`: the digest of that one session.
+- Without either: a list of sessions (id, start time, duration, requests inspected, blocked, redacted,
+  passthrough connections), newest first, followed by the totals over all sessions as before.
+- `--format markdown`: the same content as Markdown headings and tables, for pasting into a pull request,
+  an issue or audit evidence. Default `text`.
+
+**Digest of one session**
+
+1. Header: session id, start and end time (UTC), duration, the four counts.
+2. *What left the machine*, by host: requests forwarded unchanged, forwarded with values redacted, and
+   blocked (not sent); the HTTP methods; up to 5 distinct paths per host as logged (query strings dropped,
+   matched values already redacted before logging).
+3. *Blocked and redacted, by rule*: rule, action (block, redact, log, dropped, allow), where (url, header name,
+   body, websocket, tcp), hosts, count.
+4. *Passthrough* (model API hosts, not decrypted): host and number of connections.
+5. *Errors*: internal errors (request blocked, fail closed) and closed non-HTTP connections, if any.
+6. A closing line saying the report and the log hold no matched values.
+
+**Acceptance test** (`tests/test_report.py`): after a proxy session that sends one clean request, one with an
+email in a header and one with the AWS example key in the body to the tools host, plus one passthrough
+connection to the model host, `egressguard report --last --format markdown` contains: a host table row for the
+tools host with 1 forwarded, 1 redacted, 1 blocked; a rule table row `aws_access_key | block | body |
+tools.example.test | 1` and one for `email | redact | header:...`; a passthrough row for the model host with 1;
+and neither the AWS key nor the email anywhere. `--format text` gives the same facts as aligned text, and the
+list view shows the session with its counts.
+
+**Not in v0.4:** sending reports anywhere (Slack, email, SIEM), HTML or PDF, scheduled digests, recording the
+agent's command line (it can contain secrets), changing the log format.

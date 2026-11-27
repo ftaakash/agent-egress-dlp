@@ -190,8 +190,35 @@ starts. When your trusted policy is looser than the defaults, `egressguard run` 
 
 Events go to `~/.egressguard/egress.jsonl` (or `--log`). A matched value is stored only as an HMAC-SHA256 prefix
 with a random per-install key, never in clear; paths are logged without the query string.
-`egressguard report [--last]` prints top hosts, findings per rule and action (findings inside a blocked request
-show as `dropped`), and passthrough connections.
+After a session, `egressguard report --last` prints a digest you can read in a minute: what left the machine
+per host (forwarded, redacted, blocked, methods, paths), what was blocked or redacted per rule and where, and
+which model hosts were passed through. Findings inside a blocked request show as `dropped`, since nothing of
+that request was sent.
+
+```
+egressguard report                      # list of sessions, newest first, then totals
+egressguard report --last               # digest of the most recent session
+egressguard report --session 0304c29e   # digest of one session
+egressguard report --last --format markdown > session.md   # for a pull request, an issue or audit evidence
+```
+
+From the demo:
+
+```
+What left the machine
+  Host                                      Forwarded  Redacted  Blocked (not sent)  Methods       Paths
+  tools.example.test                                0         3                   4  POST, GET     /upload, /fetch, /search
+
+Blocked and redacted, by rule
+  Rule                  Action    Where                     Hosts                           Count
+  email                 dropped   header:User-Agent         tools.example.test                  4
+  aws_access_key        block     body                      tools.example.test                  3
+  email                 redact    header:User-Agent         tools.example.test                  3
+  registered_secret     block     url                       tools.example.test                  1
+```
+
+The report holds no matched values; the `.env` token blocked in the demo was in a query string, which is never
+logged.
 
 ## What it does not do
 

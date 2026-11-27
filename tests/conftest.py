@@ -123,4 +123,5 @@ def send_full(
         with opener.open(req, timeout=15) as r:
             return r.status, dict(r.headers.items()), r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers.items()), e.read().decode("utf-8", "replace")
+        with e:
+            return e.code, dict(e.headers.items()), e.read().decode("utf-8", "replace")
